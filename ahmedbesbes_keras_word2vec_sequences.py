@@ -1,5 +1,7 @@
 import pandas as pd # provide sql-like data manipulation tools. very handy.
 pd.options.mode.chained_assignment = None
+import os
+import csv
 import numpy as np # high dimensional vector computing library.
 from copy import deepcopy
 from string import punctuation
@@ -13,7 +15,9 @@ from tqdm import tqdm
 tqdm.pandas(desc="progress-bar")
 
 from nltk.tokenize import TweetTokenizer # a tweet tokenizer from nltk.
-tokenizer = TweetTokenizer()
+nltlTokenizer = TweetTokenizer()
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
 
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -28,6 +32,13 @@ from keras.utils.np_utils import to_categorical
 from keras.layers import Dense, Input,  Flatten
 from keras.layers import Conv1D, MaxPooling1D, AveragePooling1D, Embedding
 from keras.callbacks import ModelCheckpoint
+
+BASE_DIR = '.'
+GLOVE_DIR = BASE_DIR + '/glove/'
+GLOVE_FILE = 'glove.twitter.27B.200d.txt'
+MAX_SEQ_LEN = 256
+n_dim=200
+bBuildWordVector = 0
 
 #define a function that loads the dataset and extracts the two columns
 def ingest():
@@ -47,39 +58,49 @@ print(data.head(5))
 #n=data.shape[0]
 n=256000
 
+def filterTweet(tweet):
+    try:
+        #tweet = unicode(tweet.decode('utf-8').lower())
+        tweet = tweet.lower()
+        tokens = nltlTokenizer.tokenize(tweet)
+        tokens = filter(lambda t: not t.startswith('@'), tokens)
+        tokens = filter(lambda t: not t.startswith('#'), tokens)
+        tokens = filter(lambda t: not t.startswith('http'), tokens)
+        return ' '.join(list(tokens))
+    except:
+        return 'NC'
+
 #tokenizing function that splits each tweet into tokens and removes user mentions, hashtags and urls
 def tokenize(tweet):
     try:
         #tweet = unicode(tweet.decode('utf-8').lower())
         tweet = tweet.lower()
-        tokens = tokenizer.tokenize(tweet)
-        tokens = filter(lambda t: not t.startswith('@'), tokens)
-        tokens = filter(lambda t: not t.startswith('#'), tokens)
-        tokens = filter(lambda t: not t.startswith('http'), tokens)
-        return ''.join(list(tokens))
+        tokens = nltlTokenizer.tokenize(tweet)
+        return list(tokens)
     except:
         return 'NC'
 
 #The results of the tokenization should now be cleaned to remove lines with 'NC', resulting from a tokenization error
 def postprocess(data, n=1600000):
     data = data.head(n)
-    data['tokens'] = data['SentimentText'].progress_map(tokenize)  ## progress_map is a variant of the map function plus a progress bar. Handy to monitor DataFrame creations.
-    data = data[data.tokens != 'NC']
+    data['SentimentTextFiltered'] = data['SentimentText'].progress_map(filterTweet)
+    data['tokens'] = data['SentimentTextFiltered'].progress_map(tokenize)  ## progress_map is a variant of the map function plus a progress bar. Handy to monitor DataFrame creations.
+    data = data[data.SentimentTextFiltered != 'NC']
     data.reset_index(inplace=True)
     data.drop('index', inplace=True, axis=1)
-    return data['tokens'],data[''Sentiment'']
+    return data['SentimentTextFiltered'], data['Sentiment'], data['tokens'].as_matrix()
 
-X_raw, Y_raw = postprocess(data,n)
+X_raw, Y_raw, X_tokens = postprocess(data,n)
+tokenizer = Tokenizer() #nb_words=MAX_NB_WORDS
 tokenizer.fit_on_texts(X_raw)
 sequences = tokenizer.texts_to_sequences(X_raw)
 word_index = tokenizer.word_index
-MAX_SEQ_LEN = 256
 X_processed = pad_sequences(sequences, maxlen=MAX_SEQ_LEN)
 Y_processed = to_categorical(np.asarray(Y_raw), 2)
 
 #Build the word2vec model
-x_train, x_test, y_train, y_test = train_test_split(np.array(X_processed.head(n)),
-                                                    np.array(Y_processed.head(n)), test_size=0.2)
+x_train, x_test, y_train, y_test = train_test_split(np.array(X_processed),
+                                                    np.array(Y_processed), test_size=0.2)
 
 # def labelizeTweets(tweets, label_type):
     # labelized = []
@@ -92,13 +113,26 @@ x_train, x_test, y_train, y_test = train_test_split(np.array(X_processed.head(n)
 # x_test = labelizeTweets(x_test, 'TEST')
 print(x_train[0])
 
-n_dim=200
-tweet_w2v = Word2Vec(size=n_dim, min_count=10)
-tweet_w2v.build_vocab([x.words for x in tqdm(x_train)])
-tweet_w2v.train([x.words for x in tqdm(x_train)],total_examples=tweet_w2v.corpus_count,epochs=tweet_w2v.iter)
-#test built word2vec model
-print(tweet_w2v['good'])
-print(tweet_w2v.most_similar('good'))
+def get_embeddings():
+    embeddings = {}
+    with open(os.path.join(GLOVE_DIR, GLOVE_FILE), 'r', encoding='utf-8') as f:
+        for line in f:
+            values = line.split()
+            word = values[0]
+            coefs = np.asarray(values[1:], dtype='float32')
+            embeddings[word] = coefs
+    return embeddings
+
+if(bBuildWordVector):
+    tweet_w2v = Word2Vec(size=n_dim, min_count=10)
+    tweet_w2v.build_vocab([x for x in tqdm(X_tokens)])
+    tweet_w2v.train([x for x in tqdm(X_tokens)],total_examples=tweet_w2v.corpus_count,epochs=tweet_w2v.iter)
+    #test built word2vec model
+    if 'good' in tweet_w2v:
+        print(tweet_w2v['good'])
+        print(tweet_w2v.most_similar('good'))
+else:    
+    embeddings = get_embeddings()
 
 # # importing bokeh library for interactive dataviz
 # import bokeh.plotting as bp
@@ -158,8 +192,7 @@ print(tweet_w2v.most_similar('good'))
 # test_vecs_w2v = scale(test_vecs_w2v)
 # print('test_vecs_w2v shape', test_vecs_w2v.shape)
 
-def make_embedding_layer(word_index):
-    #embeddings = get_embeddings()
+def make_embedding_layer(word_index):    
     #nb_words = min(MAX_NB_WORDS, len(word_index))
     nb_words = len(word_index)
     embedding_matrix = np.zeros((nb_words, n_dim))
@@ -167,8 +200,13 @@ def make_embedding_layer(word_index):
     for word, i in word_index.items():
         #if i >= MAX_NB_WORDS:
         #    continue
-        #embedding_vector = embeddings.get(word)
-        embedding_vector = tweet_w2v[word].reshape((1, size))
+        if(bBuildWordVector):
+            if word in tweet_w2v:
+                embedding_vector = tweet_w2v[word].reshape((1, n_dim))
+            else:
+                embedding_vector = None
+        else:
+            embedding_vector = embeddings.get(word)
         if embedding_vector is not None:
             embedding_matrix[i] = embedding_vector
 
@@ -180,13 +218,13 @@ model = Sequential()
 embedded_sequences = make_embedding_layer(word_index)
 model.add(embedded_sequences)
 model.add(Conv1D(256, 5, activation='relu'))
-model.add(AveragePooling1D(5),
+model.add(AveragePooling1D(5))
 model.add(Conv1D(128, 5, activation='relu'))
 model.add(MaxPooling1D(5))
 model.add(Flatten())
 model.add(Dropout(0.3))
-Dense(128, activation='relu'))
-Dense(len(labels_index), activation='softmax'))
+model.add(Dense(128, activation='relu'))
+model.add(Dense(len(labels_index), activation='softmax'))
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
