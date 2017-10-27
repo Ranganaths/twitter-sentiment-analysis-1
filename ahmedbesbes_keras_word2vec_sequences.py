@@ -18,6 +18,17 @@ tokenizer = TweetTokenizer()
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+from sklearn.preprocessing import scale
+
+from keras.models import Sequential
+from keras.layers import Dropout
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
+from keras.utils.np_utils import to_categorical
+from keras.layers import Dense, Input,  Flatten
+from keras.layers import Conv1D, MaxPooling1D, AveragePooling1D, Embedding
+from keras.callbacks import ModelCheckpoint
+
 #define a function that loads the dataset and extracts the two columns
 def ingest():
     data = pd.read_csv('./training.1600000.processed.noemoticon.csv', encoding = "utf-8")
@@ -33,8 +44,8 @@ def ingest():
 
 data = ingest()
 print(data.head(5))
-#n=256000
-n=data.shape[0]
+#n=data.shape[0]
+n=256000
 
 #tokenizing function that splits each tweet into tokens and removes user mentions, hashtags and urls
 def tokenize(tweet):
@@ -45,7 +56,7 @@ def tokenize(tweet):
         tokens = filter(lambda t: not t.startswith('@'), tokens)
         tokens = filter(lambda t: not t.startswith('#'), tokens)
         tokens = filter(lambda t: not t.startswith('http'), tokens)
-        return list(tokens)
+        return ''.join(list(tokens))
     except:
         return 'NC'
 
@@ -56,23 +67,29 @@ def postprocess(data, n=1600000):
     data = data[data.tokens != 'NC']
     data.reset_index(inplace=True)
     data.drop('index', inplace=True, axis=1)
-    return data
+    return data['tokens'],data[''Sentiment'']
 
-data = postprocess(data,n)
+X_raw, Y_raw = postprocess(data,n)
+tokenizer.fit_on_texts(X_raw)
+sequences = tokenizer.texts_to_sequences(X_raw)
+word_index = tokenizer.word_index
+MAX_SEQ_LEN = 256
+X_processed = pad_sequences(sequences, maxlen=MAX_SEQ_LEN)
+Y_processed = to_categorical(np.asarray(Y_raw), 2)
 
 #Build the word2vec model
-x_train, x_test, y_train, y_test = train_test_split(np.array(data.head(n).tokens),
-                                                    np.array(data.head(n).Sentiment), test_size=0.2)
+x_train, x_test, y_train, y_test = train_test_split(np.array(X_processed.head(n)),
+                                                    np.array(Y_processed.head(n)), test_size=0.2)
 
-def labelizeTweets(tweets, label_type):
-    labelized = []
-    for i,v in tqdm(enumerate(tweets)):
-        label = '%s_%s'%(label_type,i)
-        labelized.append(LabeledSentence(v, [label]))
-    return labelized
+# def labelizeTweets(tweets, label_type):
+    # labelized = []
+    # for i,v in tqdm(enumerate(tweets)):
+        # label = '%s_%s'%(label_type,i)
+        # labelized.append(LabeledSentence(v, [label]))
+    # return labelized
 
-x_train = labelizeTweets(x_train, 'TRAIN')
-x_test = labelizeTweets(x_test, 'TEST')
+# x_train = labelizeTweets(x_train, 'TRAIN')
+# x_test = labelizeTweets(x_test, 'TEST')
 print(x_train[0])
 
 n_dim=200
@@ -112,55 +129,69 @@ print(tweet_w2v.most_similar('good'))
 # hover.tooltips={"word": "@words"}
 # show(plot_tfidf)
 
-print('building tf-idf matrix ...')
-vectorizer = TfidfVectorizer(analyzer=lambda x: x, min_df=10)
-matrix = vectorizer.fit_transform([x.words for x in x_train])
-tfidf = dict(zip(vectorizer.get_feature_names(), vectorizer.idf_))
-print('vocab size :', len(tfidf))
+# print('building tf-idf matrix ...')
+# vectorizer = TfidfVectorizer(analyzer=lambda x: x, min_df=10)
+# matrix = vectorizer.fit_transform([x.words for x in x_train])
+# tfidf = dict(zip(vectorizer.get_feature_names(), vectorizer.idf_))
+# print('vocab size :', len(tfidf))
 
-def buildWordVector(tokens, size):
-    vec = np.zeros(size).reshape((1, size))
-    count = 0.
-    for word in tokens:
-        try:
-            vec += tweet_w2v[word].reshape((1, size)) * tfidf[word]
-            count += 1.
-        except KeyError: # handling the case where the token is not
-                         # in the corpus. useful for testing.
-            continue
-    if count != 0:
-        vec /= count
-    return vec
+# def buildWordVector(tokens, size):
+    # vec = np.zeros(size).reshape((1, size))
+    # count = 0.
+    # for word in tokens:
+        # try:
+            # vec += tweet_w2v[word].reshape((1, size)) * tfidf[word]
+            # count += 1.
+        # except KeyError: # handling the case where the token is not
+                         # # in the corpus. useful for testing.
+            # continue
+    # if count != 0:
+        # vec /= count
+    # return vec
 
-from sklearn.preprocessing import scale
-print('building train combines word_vectors with tf-idf ...')
-train_vecs_w2v = np.concatenate([buildWordVector(z, n_dim) for z in tqdm(map(lambda x: x.words, x_train))])
-train_vecs_w2v = scale(train_vecs_w2v)
-print('train_vecs_w2v shape', train_vecs_w2v.shape)
-print('building test combines word_vectors with tf-idf ...')
-test_vecs_w2v = np.concatenate([buildWordVector(z, n_dim) for z in tqdm(map(lambda x: x.words, x_test))])
-test_vecs_w2v = scale(test_vecs_w2v)
-print('test_vecs_w2v shape', test_vecs_w2v.shape)
+# print('building train combines word_vectors with tf-idf ...')
+# train_vecs_w2v = np.concatenate([buildWordVector(z, n_dim) for z in tqdm(map(lambda x: x.words, x_train))])
+# train_vecs_w2v = scale(train_vecs_w2v)
+# print('train_vecs_w2v shape', train_vecs_w2v.shape)
+# print('building test combines word_vectors with tf-idf ...')
+# test_vecs_w2v = np.concatenate([buildWordVector(z, n_dim) for z in tqdm(map(lambda x: x.words, x_test))])
+# test_vecs_w2v = scale(test_vecs_w2v)
+# print('test_vecs_w2v shape', test_vecs_w2v.shape)
 
-from keras.models import Sequential
-from keras.layers import Dropout
-from keras.preprocessing.text import Tokenizer
-from keras.preprocessing.sequence import pad_sequences
-from keras.utils.np_utils import to_categorical
-from keras.layers import Dense, Input,  Flatten
-from keras.layers import Conv1D, MaxPooling1D, AveragePooling1D, Embedding
-from keras.callbacks import ModelCheckpoint
+def make_embedding_layer(word_index):
+    #embeddings = get_embeddings()
+    #nb_words = min(MAX_NB_WORDS, len(word_index))
+    nb_words = len(word_index)
+    embedding_matrix = np.zeros((nb_words, n_dim))
+
+    for word, i in word_index.items():
+        #if i >= MAX_NB_WORDS:
+        #    continue
+        #embedding_vector = embeddings.get(word)
+        embedding_vector = tweet_w2v[word].reshape((1, size))
+        if embedding_vector is not None:
+            embedding_matrix[i] = embedding_vector
+
+    embedding_layer = Embedding(nb_words, n_dim, weights=[embedding_matrix], input_length=MAX_SEQ_LEN, trainable=False)
+    return embedding_layer
 
 print('begin to train DNN model for sentiment analysis...')
 model = Sequential()
-model.add(Dense(64, activation='relu', input_dim=n_dim))
-model.add(Dense(1, activation='sigmoid'))
-model.compile(optimizer='rmsprop', loss='binary_crossentropy', metrics=['accuracy'])
-#model.add(Dense(1, activation='softmax'))
-#model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+embedded_sequences = make_embedding_layer(word_index)
+model.add(embedded_sequences)
+model.add(Conv1D(256, 5, activation='relu'))
+model.add(AveragePooling1D(5),
+model.add(Conv1D(128, 5, activation='relu'))
+model.add(MaxPooling1D(5))
+model.add(Flatten())
+model.add(Dropout(0.3))
+Dense(128, activation='relu'))
+Dense(len(labels_index), activation='softmax'))
 
-model.fit(train_vecs_w2v, y_train, epochs=100, batch_size=256, verbose=2)
+model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+
+model.fit(x_train, y_train, epochs=10, batch_size=256, verbose=2)
 
 print('Evaluate trained model on test dataset...')
-score = model.evaluate(test_vecs_w2v, y_test, batch_size=256, verbose=2)
+score = model.evaluate(x_test, y_test, batch_size=256, verbose=2)
 print('Accuracy: ', score[1])
