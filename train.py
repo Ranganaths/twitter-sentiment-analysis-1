@@ -20,7 +20,7 @@ prng = RandomState(1234567890)
 BASE_DIR = '.'
 GLOVE_DIR = BASE_DIR + '/glove/'
 
-MAX_SEQUENCE_LENGTH = 1000
+MAX_SEQUENCE_LENGTH = 500    #1000
 MAX_NB_WORDS = 20000
 
 # Consider changing the 200 to 25
@@ -33,7 +33,7 @@ VALIDATION_SPLIT = 0.2
 
 # consider outsourcing the preprocessing (tokenize + embeding) into a dictionary file)
 def main():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'  # str(random.randint(0, 15))
+    #os.environ['CUDA_VISIBLE_DEVICES'] = '1'  # str(random.randint(0, 15))
     labels_index = { 'Negative': 0, 'Positive': 1}
 
     word_index, x_train, x_val, y_train, y_val = get_training_and_validation_sets()
@@ -135,7 +135,7 @@ def tokenize_data(X_raw, Y_raw):
 def load_data_set():
     X = []
     Y = []
-    with open(TRAIN_DATA_FILE, "rb") as f:
+    with open(TRAIN_DATA_FILE, "r", encoding='utf-8') as f:
         reader = csv.reader(f, delimiter=",")
         for i, line in enumerate(reader):
             is_positive = line[1]=="1"
@@ -146,7 +146,7 @@ def load_data_set():
 
 def get_embeddings():
     embeddings = {}
-    with open(os.path.join(GLOVE_DIR, GLOVE_FILE), 'r') as f:
+    with open(os.path.join(GLOVE_DIR, GLOVE_FILE), 'r', encoding='utf-8') as f:
         for line in f:
             values = line.split()
             word = values[0]

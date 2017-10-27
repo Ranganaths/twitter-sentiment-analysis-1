@@ -42,7 +42,7 @@ bBuildWordVector = 0
 
 #define a function that loads the dataset and extracts the two columns
 def ingest():
-    data = pd.read_csv('./training.1600000.processed.noemoticon.csv', encoding = "utf-8")
+    data = pd.read_csv('./training.1600000.processed.noemoticon.csv')    #, encoding = "utf-8"
     data.drop(['ItemID', 'SentimentSource'], axis=1, inplace=True)
     data = data[data.Sentiment.isnull() == False]
     data['Sentiment'] = data['Sentiment'].map( {4:1, 0:0} )
@@ -55,8 +55,8 @@ def ingest():
 
 data = ingest()
 print(data.head(5))
-#n=data.shape[0]
-n=256000
+n=data.shape[0]
+#n=256000
 
 def filterTweet(tweet):
     try:
@@ -115,7 +115,7 @@ print(x_train[0])
 
 def get_embeddings():
     embeddings = {}
-    with open(os.path.join(GLOVE_DIR, GLOVE_FILE), 'r', encoding='utf-8') as f:
+    with open(os.path.join(GLOVE_DIR, GLOVE_FILE), 'r', encoding='utf-8') as f:    #
         for line in f:
             values = line.split()
             word = values[0]
@@ -194,7 +194,7 @@ else:
 
 def make_embedding_layer(word_index):    
     #nb_words = min(MAX_NB_WORDS, len(word_index))
-    nb_words = len(word_index)
+    nb_words = len(word_index)+1
     embedding_matrix = np.zeros((nb_words, n_dim))
 
     for word, i in word_index.items():
@@ -217,6 +217,8 @@ print('begin to train DNN model for sentiment analysis...')
 model = Sequential()
 embedded_sequences = make_embedding_layer(word_index)
 model.add(embedded_sequences)
+model.add(Conv1D(512, 5, activation='relu'))
+model.add(AveragePooling1D(5))
 model.add(Conv1D(256, 5, activation='relu'))
 model.add(AveragePooling1D(5))
 model.add(Conv1D(128, 5, activation='relu'))
@@ -224,7 +226,7 @@ model.add(MaxPooling1D(5))
 model.add(Flatten())
 model.add(Dropout(0.3))
 model.add(Dense(128, activation='relu'))
-model.add(Dense(len(labels_index), activation='softmax'))
+model.add(Dense(2, activation='softmax'))    #len(labels_index)
 
 model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
 
