@@ -7,7 +7,6 @@ from keras.preprocessing.sequence import pad_sequences
 from keras.utils.np_utils import to_categorical
 from keras.layers import Dense, Input,  Flatten
 from keras.layers import Conv1D, MaxPooling1D, AveragePooling1D, Embedding
-
 from keras.callbacks import ModelCheckpoint
 from sklearn.metrics import confusion_matrix
 
@@ -35,22 +34,17 @@ VALIDATION_SPLIT = 0.2
 def main():
     #os.environ['CUDA_VISIBLE_DEVICES'] = '1'  # str(random.randint(0, 15))
     labels_index = { 'Negative': 0, 'Positive': 1}
-
     word_index, x_train, x_val, y_train, y_val = get_training_and_validation_sets()
-
     model = make_model(labels_index, word_index)
     train(model, x_train, x_val, y_train, y_val)
-
     valid_predicted_out = model.predict(x=x_val, batch_size=256)
     evaluate(y_val, valid_predicted_out)
-
 
 def get_training_and_validation_sets():
     X_raw, Y_raw = load_data_set()
     X_processed, Y_processed, word_index = tokenize_data(X_raw, Y_raw)
     x_train, x_val, y_train, y_val = split_the_data(X_processed, Y_processed)
     return word_index, x_train, x_val, y_train, y_val
-
 
 def train(model, x_train, x_val, y_train, y_val):
     print("Train")
@@ -90,7 +84,6 @@ def make_model(labels_index, word_index):
     model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['acc'])
 
     return model
-
 
 def make_embedding_layer(word_index):
     embeddings = get_embeddings()
